@@ -1,0 +1,11 @@
+symbol,name,exchange,sector,market_cap,avg_volume
+AAPL,Apple Inc,NASDAQ,Technology,Large,50000000
+MSFT,Microsoft Corporation,NASDAQ,Technology,Large,25000000
+GOOGL,Alphabet Inc Class A,NASDAQ,Technology,Large,20000000
+AMZN,Amazon.com Inc,NASDAQ,Consumer Discretionary,Large,30000000
+TSLA,Tesla Inc,NASDAQ,Consumer Discretionary,Large,45000000
+META,Meta Platforms Inc,NASDAQ,Technology,Large,25000000
+NVDA,NVIDIA Corporation,NASDAQ,Technology,Large,40000000
+JPM,JPMorgan Chase & Co,NYSE,Financials,Large,15000000
+V,Visa Inc,NYSE,Financials,Large,10000000
+JNJ,Johnson & Johnson,NYSE,Healthcare,Large,8000000
