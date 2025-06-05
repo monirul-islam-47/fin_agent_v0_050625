@@ -1,0 +1,17 @@
+{
+  "finnhub": {
+    "used": 5,
+    "last_reset": 1749154473.636354,
+    "last_call": 1749154473.637693
+  },
+  "alpha_vantage": {
+    "used": 0,
+    "last_reset": 1749154473.6363573,
+    "last_call": 1749154473.6363575
+  },
+  "newsapi": {
+    "used": 0,
+    "last_reset": 1749154473.6363595,
+    "last_call": 1749154473.6363595
+  }
+}

@@ -192,6 +192,11 @@ def run_event_loop(event_queue: queue.Queue):
             coordinator = Coordinator(event_bus)
             st.session_state.coordinator = coordinator
             
+            # Initialize trade journal and subscribe to events
+            from src.persistence.journal import TradeJournal
+            journal = TradeJournal()
+            await journal.subscribe_to_events(event_bus)
+            
             # Keep the event loop running
             while True:
                 await asyncio.sleep(0.1)
@@ -516,18 +521,192 @@ with tab3:
 with tab4:
     st.header("Performance Tracking")
     
-    # Performance metrics
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Today's Scans", len(st.session_state.scan_results), "")
-    with col2:
-        st.metric("Alerts Triggered", len(st.session_state.risk_alerts), "")
-    with col3:
-        st.metric("System Uptime", "100%", "")
-    with col4:
-        st.metric("API Health", "All Good", "✅")
+    # Import persistence modules
+    from src.persistence.journal import TradeJournal
+    from src.persistence.metrics import PerformanceMetrics
     
-    st.info("Detailed performance metrics will be available after the first trading day")
+    journal = TradeJournal()
+    metrics = PerformanceMetrics(journal)
+    
+    # Performance metrics cards
+    col1, col2, col3, col4 = st.columns(4)
+    
+    # Get overall metrics
+    overall_metrics = metrics.get_overall_metrics()
+    
+    with col1:
+        win_rate = overall_metrics.get('win_rate', 0) * 100
+        st.metric("Win Rate", f"{win_rate:.1f}%", 
+                 "🟢" if win_rate >= 60 else "🔴" if win_rate < 50 else "🟡")
+    with col2:
+        total_pnl = overall_metrics.get('total_pnl', 0)
+        st.metric("Total P&L", f"€{total_pnl:.2f}",
+                 "🟢" if total_pnl > 0 else "🔴" if total_pnl < 0 else "⚪")
+    with col3:
+        avg_return = overall_metrics.get('avg_return_percent', 0)
+        st.metric("Avg Return", f"{avg_return:.1f}%",
+                 "Target: +7-10%")
+    with col4:
+        profit_factor = overall_metrics.get('profit_factor', 0)
+        st.metric("Profit Factor", f"{profit_factor:.2f}",
+                 "🟢" if profit_factor > 1.5 else "🔴")
+    
+    st.divider()
+    
+    # Trade History section
+    st.subheader("📜 Trade History")
+    
+    # Date range filter
+    col1, col2, col3 = st.columns([1, 1, 2])
+    with col1:
+        start_date = st.date_input("From", value=datetime.now().date() - timedelta(days=7))
+    with col2:
+        end_date = st.date_input("To", value=datetime.now().date())
+    with col3:
+        # CSV Export button
+        if st.button("📥 Export to CSV", type="primary"):
+            try:
+                # Export trades
+                export_path = f"data/exports/trades_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+                journal.export_to_csv(
+                    export_path,
+                    datetime.combine(start_date, datetime.min.time()),
+                    datetime.combine(end_date, datetime.max.time())
+                )
+                st.success(f"✅ Exported trades to {export_path}")
+            except Exception as e:
+                st.error(f"❌ Export failed: {str(e)}")
+    
+    # Get recent trades
+    recent_trades = journal.get_recent_trades(limit=20)
+    
+    if recent_trades:
+        # Convert to DataFrame for display
+        trades_df = pd.DataFrame(recent_trades)
+        
+        # Select and format columns
+        display_cols = ['timestamp', 'symbol', 'direction', 'entry_price', 
+                       'actual_entry_price', 'target_price', 'stop_loss',
+                       'actual_exit_price', 'pnl_eur', 'pnl_percent', 'status']
+        
+        # Filter columns that exist
+        display_cols = [col for col in display_cols if col in trades_df.columns]
+        trades_df = trades_df[display_cols]
+        
+        # Format timestamps
+        trades_df['timestamp'] = pd.to_datetime(trades_df['timestamp']).dt.strftime('%Y-%m-%d %H:%M')
+        
+        # Style the dataframe
+        def style_trades(df):
+            def color_pnl(val):
+                if pd.isna(val) or val == 0:
+                    return ''
+                color = 'green' if val > 0 else 'red'
+                return f'color: {color}'
+            
+            def status_color(val):
+                colors = {
+                    'pending': 'color: gray',
+                    'executed': 'color: blue',
+                    'closed': 'color: black',
+                    'cancelled': 'color: orange'
+                }
+                return colors.get(val, '')
+            
+            return df.style.applymap(color_pnl, subset=['pnl_eur', 'pnl_percent']).applymap(status_color, subset=['status'])
+        
+        st.dataframe(
+            style_trades(trades_df),
+            use_container_width=True,
+            hide_index=True
+        )
+    else:
+        st.info("No trades recorded yet. Trades will appear here after signal generation.")
+    
+    st.divider()
+    
+    # Performance Chart
+    st.subheader("📈 Performance Over Time")
+    
+    # Get daily metrics for the last 30 days
+    daily_metrics = metrics.get_metrics_by_period('daily', 30)
+    
+    if daily_metrics:
+        # Create cumulative P&L chart
+        metrics_df = pd.DataFrame(daily_metrics)
+        metrics_df['date'] = pd.to_datetime(metrics_df['date'])
+        metrics_df = metrics_df.sort_values('date')
+        metrics_df['cumulative_pnl'] = metrics_df['total_pnl'].cumsum()
+        
+        # Plot using Plotly
+        import plotly.graph_objects as go
+        
+        fig = go.Figure()
+        
+        # Add cumulative P&L line
+        fig.add_trace(go.Scatter(
+            x=metrics_df['date'],
+            y=metrics_df['cumulative_pnl'],
+            mode='lines+markers',
+            name='Cumulative P&L',
+            line=dict(color='green' if metrics_df['cumulative_pnl'].iloc[-1] > 0 else 'red', width=2),
+            marker=dict(size=6)
+        ))
+        
+        # Add daily P&L bars
+        fig.add_trace(go.Bar(
+            x=metrics_df['date'],
+            y=metrics_df['total_pnl'],
+            name='Daily P&L',
+            marker_color=['green' if x > 0 else 'red' for x in metrics_df['total_pnl']],
+            yaxis='y2',
+            opacity=0.6
+        ))
+        
+        # Update layout
+        fig.update_layout(
+            title='Trading Performance',
+            xaxis_title='Date',
+            yaxis_title='Cumulative P&L (€)',
+            yaxis2=dict(
+                title='Daily P&L (€)',
+                overlaying='y',
+                side='right'
+            ),
+            hovermode='x unified',
+            height=400
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Performance chart will be available after recording trades.")
+    
+    st.divider()
+    
+    # Quota Usage section
+    st.subheader("🔧 API Quota Usage")
+    
+    from src.utils.quota import get_quota_guard
+    quota_guard = get_quota_guard()
+    
+    # Get usage summary
+    usage_summary = quota_guard.get_usage_summary(days=1)
+    
+    # Display quota metrics
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        st.metric("Total API Calls Today", usage_summary.get('total_calls', 0))
+    with col2:
+        st.metric("Estimated Cost", f"€{usage_summary.get('estimated_cost', 0):.2f}")
+    with col3:
+        if st.button("📊 Export Quota Report"):
+            try:
+                report_path = quota_guard.export_daily_summary()
+                if report_path:
+                    st.success(f"✅ Exported quota report to {report_path}")
+            except Exception as e:
+                st.error(f"❌ Export failed: {str(e)}")
 
 # Footer
 st.divider()

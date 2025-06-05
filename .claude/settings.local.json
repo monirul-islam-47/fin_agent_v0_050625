@@ -15,7 +15,10 @@
       "Bash(rg:*)",
       "Bash(grep:*)",
       "Bash(sed:*)",
-      "Bash(cp:*)"
+      "Bash(cp:*)",
+      "Bash(PYTHONPATH=/mnt/c/Users/Gluttony/Desktop/projects/personal/trading/fin_agent_v0_050625 pytest tests/unit/test_orchestration.py::TestCoordinator::test_scan_workflow -v --tb=short)",
+      "Bash(PYTHONPATH=/mnt/c/Users/Gluttony/Desktop/projects/personal/trading/fin_agent_v0_050625 pytest tests/unit/test_orchestration.py -v --tb=short)",
+      "Bash(PYTHONPATH=/mnt/c/Users/Gluttony/Desktop/projects/personal/trading/fin_agent_v0_050625 pytest tests/ -v --tb=short)"
     ],
     "deny": []
   }
