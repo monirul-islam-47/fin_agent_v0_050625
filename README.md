@@ -11,6 +11,9 @@ A sophisticated Python trading assistant that identifies 5 US stocks daily with 
 - **Event-Driven Architecture**: Async pub/sub system for real-time updates
 - **Automated Scanning**: Scheduled scans at 14:00 and 18:15 CET
 - **Free-Tier Optimization**: Intelligent quota management across multiple APIs
+- **Trade Persistence**: Automatic recording of all trades with SQLite storage
+- **Performance Analytics**: Real-time metrics, win rate, P&L tracking
+- **Export Capabilities**: CSV export of trade history with date filtering
 
 ## 🚀 Quick Start
 
@@ -70,7 +73,7 @@ Open http://localhost:8501 in your browser. The dashboard provides:
 - **Top Picks Tab**: Live trading recommendations with full trade plans
 - **Live Prices**: Real-time WebSocket price updates
 - **Market Events**: News and scheduled scans
-- **Performance**: System metrics and trading history
+- **Performance**: Real-time metrics, trade history, P&L charts, CSV export
 
 ### Command Line Interface
 
@@ -112,11 +115,16 @@ fin_agent_v0_050625/
 │   │   ├── event_bus.py # Async pub/sub messaging
 │   │   ├── scheduler.py # Automated scan timing
 │   │   └── coordinator.py # Workflow orchestration
+│   ├── persistence/     # Trade recording & metrics
+│   │   ├── journal.py   # Trade history database
+│   │   └── metrics.py   # Performance calculations
 │   └── utils/           # Logging, quota management
 ├── dashboard.py         # Streamlit web interface
-├── data/               # Cache and configuration
+├── data/               # Cache and storage
 │   ├── cache/          # JSON cache files
-│   └── universe/       # Trading symbols CSV
+│   ├── universe/       # Trading symbols CSV
+│   ├── trades.db       # SQLite trade history
+│   └── exports/        # CSV export directory
 └── tests/              # Comprehensive test suite
 ```
 
@@ -131,6 +139,8 @@ graph LR
     C --> F[Planner]
     F --> G[TradeSignal Event]
     G --> H[Dashboard Updates]
+    G --> I[Trade Journal]
+    I --> J[Performance Metrics]
 ```
 
 ## 📈 Trading Strategy
@@ -176,6 +186,33 @@ DEFAULT_WEIGHTS = {
 | Alpha Vantage | 25/day | Historical data | Cached data |
 | NewsAPI | 1000/day | Headlines | GDELT (unlimited) |
 
+## 📊 Performance Tracking
+
+### Automatic Trade Recording
+
+All generated trade signals are automatically saved to SQLite database:
+- Trade details (entry, stop, target, position size)
+- Factor scores that led to the trade
+- Timestamps and status tracking
+- Manual execution updates supported
+
+### Performance Metrics
+
+- **Win Rate**: Percentage of profitable trades
+- **Total P&L**: Cumulative profit/loss in EUR
+- **Average Return**: Mean return per trade
+- **Profit Factor**: Gross profit / gross loss ratio
+- **Sharpe Ratio**: Risk-adjusted returns
+- **Max Drawdown**: Largest peak-to-trough decline
+
+### Data Export
+
+```bash
+# Export trades via dashboard
+# Navigate to Performance tab → Click "Export to CSV"
+# Files saved to data/exports/trades_YYYYMMDD_HHMMSS.csv
+```
+
 ## 🧪 Development
 
 ### Running Tests
@@ -190,7 +227,7 @@ pytest tests/integration/ -v
 pytest tests/system/ -v
 ```
 
-Current test coverage: 79% (11/14 tests passing)
+Current test coverage: 100% (27/27 tests passing)
 
 ### Code Quality
 
@@ -208,7 +245,7 @@ mypy src/
 ### Project Status
 
 - ✅ Phase 0-5: Complete (Foundation → Presentation)
-- ⏳ Phase 6: Persistence & Analytics (optional)
+- ✅ Phase 6: Complete (Persistence & Analytics)
 - ⏳ Phase 7: Extended Testing & CI/CD (optional)
 
 ## 🐛 Troubleshooting
@@ -238,6 +275,7 @@ mypy src/
 
 - **Application logs**: `logs/odta_YYYYMMDD.log`
 - **Cache files**: `data/cache/` (human-readable JSON)
+- **Trade database**: `data/trades.db` (SQLite)
 - **Debug mode**: Set `LOG_LEVEL=DEBUG` in `.env`
 
 ## 📋 Daily Trading Workflow

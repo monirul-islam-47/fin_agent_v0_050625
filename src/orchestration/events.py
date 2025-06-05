@@ -150,3 +150,19 @@ class ErrorEvent(Event):
     @property
     def event_type(self) -> EventType:
         return EventType.ERROR
+
+
+@dataclass
+class PersistenceEvent(Event):
+    """Event for persistence operations."""
+    priority: EventPriority = EventPriority.NORMAL
+    operation: str = ""  # "trade_recorded", "metrics_updated", "export_completed"
+    entity_type: str = ""  # "trade", "metrics", "journal"
+    entity_id: Optional[int] = None
+    details: Dict[str, Any] = field(default_factory=dict)
+    success: bool = True
+    error_message: Optional[str] = None
+    
+    @property
+    def event_type(self) -> EventType:
+        return EventType.SYSTEM_STATUS

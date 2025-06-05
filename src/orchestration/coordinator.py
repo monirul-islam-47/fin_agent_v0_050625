@@ -20,6 +20,8 @@ from src.orchestration.events import (
     ScanRequest, TradeSignal, SystemStatus, ErrorEvent,
     RiskAlert, DataUpdate, EventPriority
 )
+from src.persistence.journal import TradeJournal
+from src.persistence.metrics import PerformanceMetrics
 
 
 logger = get_logger(__name__)
@@ -73,6 +75,10 @@ class Coordinator:
         self.trade_planner = TradePlanner()
         self.risk_manager = RiskManager()
         
+        # Persistence components
+        self.trade_journal = TradeJournal()
+        self.performance_metrics = PerformanceMetrics(self.trade_journal)
+        
         # State
         self._running = False
         self._current_scan: Optional[asyncio.Task] = None
@@ -94,6 +100,9 @@ class Coordinator:
         
         # Initialize components
         await self._initialize_components()
+        
+        # Subscribe persistence components to events
+        await self.trade_journal.subscribe_to_events(self.event_bus)
         
         # Emit status
         await self.event_bus.publish(SystemStatus(

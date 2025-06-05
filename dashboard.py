@@ -19,7 +19,8 @@ import pytz
 from src.orchestration.event_bus import EventBus
 from src.orchestration.events import (
     Event, ScanRequest, DataUpdate, TradeSignal, 
-    RiskAlert, SystemStatus, QuotaWarning, ErrorEvent
+    RiskAlert, SystemStatus, QuotaWarning, ErrorEvent,
+    PersistenceEvent
 )
 from src.orchestration.coordinator import Coordinator
 from src.data.market import MarketDataManager
@@ -167,6 +168,20 @@ class DashboardEventHandler:
                 "timestamp": event.timestamp.isoformat()
             }
         })
+        
+    async def handle_persistence_event(self, event: PersistenceEvent):
+        """Handle persistence events"""
+        self.event_queue.put({
+            "type": "persistence",
+            "timestamp": event.timestamp,
+            "data": {
+                "operation": event.operation,
+                "entity_type": event.entity_type,
+                "entity_id": event.entity_id,
+                "success": event.success,
+                "details": event.details
+            }
+        })
 
 
 def run_event_loop(event_queue: queue.Queue):
@@ -187,6 +202,7 @@ def run_event_loop(event_queue: queue.Queue):
             await event_bus.subscribe(RiskAlert, handler.handle_risk_alert)
             await event_bus.subscribe(SystemStatus, handler.handle_system_status)
             await event_bus.subscribe(ErrorEvent, handler.handle_error)
+            await event_bus.subscribe(PersistenceEvent, handler.handle_persistence_event)
             
             # Initialize coordinator
             coordinator = Coordinator(event_bus)
@@ -268,6 +284,13 @@ def process_events():
             elif event["type"] == "error":
                 # Show error
                 st.error(f"System error: {event['data']['error']}")
+                
+            elif event["type"] == "persistence":
+                # Handle persistence events
+                if event["data"]["operation"] == "trade_recorded":
+                    st.toast(f"✅ Trade recorded: {event['data']['details'].get('symbol', 'Unknown')}", icon="💾")
+                elif event["data"]["operation"] == "metrics_updated":
+                    st.toast("📊 Performance metrics updated", icon="📊")
                 
         except queue.Empty:
             break
@@ -613,7 +636,7 @@ with tab4:
                 }
                 return colors.get(val, '')
             
-            return df.style.applymap(color_pnl, subset=['pnl_eur', 'pnl_percent']).applymap(status_color, subset=['status'])
+            return df.style.map(color_pnl, subset=['pnl_eur', 'pnl_percent']).map(status_color, subset=['status'])
         
         st.dataframe(
             style_trades(trades_df),

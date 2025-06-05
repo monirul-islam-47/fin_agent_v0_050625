@@ -105,7 +105,7 @@ class TradeJournal:
             event_bus: Event bus to subscribe to
         """
         self._event_bus = event_bus
-        await event_bus.subscribe(EventType.TRADE_SIGNAL, self._handle_trade_signal)
+        await event_bus.subscribe(TradeSignal, self._handle_trade_signal)
         logger.info("Trade journal subscribed to TRADE_SIGNAL events")
         
     async def _handle_trade_signal(self, event: TradeSignal):
@@ -122,8 +122,33 @@ class TradeJournal:
                 timestamp=event.timestamp
             )
             logger.info(f"Recorded trade signal for {event.trade_plan.symbol} with ID {trade_id}")
+            
+            # Publish persistence event
+            if self._event_bus:
+                from src.orchestration.events import PersistenceEvent
+                await self._event_bus.publish(PersistenceEvent(
+                    operation="trade_recorded",
+                    entity_type="trade",
+                    entity_id=trade_id,
+                    details={
+                        "symbol": event.trade_plan.symbol,
+                        "score": event.trade_plan.score,
+                        "direction": event.trade_plan.direction
+                    },
+                    success=True
+                ))
         except Exception as e:
             logger.error(f"Failed to record trade signal: {e}")
+            
+            # Publish error event
+            if self._event_bus:
+                from src.orchestration.events import PersistenceEvent
+                await self._event_bus.publish(PersistenceEvent(
+                    operation="trade_recorded",
+                    entity_type="trade",
+                    success=False,
+                    error_message=str(e)
+                ))
             
     def record_trade(
         self,
