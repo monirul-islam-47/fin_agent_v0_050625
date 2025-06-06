@@ -154,7 +154,8 @@ class TradeJournal:
         self,
         trade_plan: TradePlan,
         factors: Dict[str, float],
-        timestamp: Optional[datetime] = None
+        timestamp: Optional[datetime] = None,
+        batch_mode: bool = False
     ) -> int:
         """Record a new trade recommendation.
         
@@ -162,6 +163,7 @@ class TradeJournal:
             trade_plan: Trade plan from planner
             factors: Factor scores that led to this trade
             timestamp: Optional timestamp (defaults to now)
+            batch_mode: If True, use DEBUG level logging to reduce output
             
         Returns:
             Trade ID
@@ -201,7 +203,10 @@ class TradeJournal:
             conn.commit()
             
             trade_id = cursor.lastrowid
-            logger.info(f"Recorded trade {trade_id} for {trade_plan.symbol}")
+            if batch_mode:
+                logger.debug(f"Recorded trade {trade_id} for {trade_plan.symbol}")
+            else:
+                logger.info(f"Recorded trade {trade_id} for {trade_plan.symbol}")
             return trade_id
             
     def update_execution(
@@ -379,7 +384,9 @@ class TradeJournal:
                     COALESCE(SUM(pnl_eur), 0) as total_pnl,
                     COALESCE(AVG(pnl_percent), 0) as avg_return_percent,
                     COALESCE(MAX(pnl_eur), 0) as best_trade,
-                    COALESCE(MIN(pnl_eur), 0) as worst_trade
+                    COALESCE(MIN(pnl_eur), 0) as worst_trade,
+                    COALESCE(AVG(CASE WHEN pnl_eur > 0 THEN pnl_eur END), 0) as average_win,
+                    COALESCE(AVG(CASE WHEN pnl_eur < 0 THEN pnl_eur END), 0) as average_loss
                 FROM trades
             """)
             

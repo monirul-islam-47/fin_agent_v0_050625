@@ -9,6 +9,7 @@ This module calculates various performance metrics including:
 """
 
 import sqlite3
+import json
 import numpy as np
 from datetime import datetime, timedelta
 from typing import Dict, Any, List, Optional, Tuple
@@ -18,6 +19,66 @@ from src.utils.logger import setup_logger
 from src.persistence.journal import TradeJournal
 
 logger = setup_logger(__name__)
+
+
+class MetricsCollector:
+    """Simple metrics collector for testing."""
+    
+    def __init__(self, db_path: str):
+        self.db_path = Path(db_path)
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self._init_db()
+    
+    def _init_db(self):
+        """Initialize metrics database."""
+        conn = sqlite3.connect(str(self.db_path))
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp DATETIME NOT NULL,
+                metric_name TEXT NOT NULL,
+                value REAL NOT NULL,
+                tags TEXT
+            )
+        """)
+        conn.commit()
+        conn.close()
+    
+    def record_metric(self, metric_name: str, value: float, tags: Dict[str, Any] = None, timestamp: datetime = None):
+        """Record a metric value."""
+        conn = sqlite3.connect(str(self.db_path))
+        ts = timestamp or datetime.now()
+        tags_json = json.dumps(tags or {})
+        
+        conn.execute(
+            "INSERT INTO metrics (timestamp, metric_name, value, tags) VALUES (?, ?, ?, ?)",
+            (ts.isoformat(), metric_name, value, tags_json)
+        )
+        conn.commit()
+        conn.close()
+    
+    def get_metric_series(self, metric_name: str, start_time: datetime, end_time: datetime = None) -> List[Dict[str, Any]]:
+        """Get time series data for a metric."""
+        conn = sqlite3.connect(str(self.db_path))
+        end_time = end_time or datetime.now()
+        
+        cursor = conn.execute(
+            """SELECT timestamp, value, tags FROM metrics 
+               WHERE metric_name = ? AND timestamp >= ? AND timestamp <= ?
+               ORDER BY timestamp DESC""",
+            (metric_name, start_time.isoformat(), end_time.isoformat())
+        )
+        
+        results = []
+        for row in cursor:
+            results.append({
+                "timestamp": datetime.fromisoformat(row[0]),
+                "value": row[1],
+                "tags": json.loads(row[2]) if row[2] else {}
+            })
+        
+        conn.close()
+        return results
 
 
 class PerformanceMetrics:

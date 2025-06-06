@@ -17,6 +17,62 @@ from ..utils import get_logger
 
 logger = get_logger(__name__)
 
+
+class CacheService:
+    """Simple synchronous cache service for testing."""
+    
+    def __init__(self, cache_dir: str):
+        self.cache_dir = Path(cache_dir)
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
+    
+    def _get_file_path(self, key: str) -> Path:
+        """Get file path for a cache key."""
+        # Sanitize key for filesystem
+        safe_key = key.replace("/", "_").replace("\\", "_").replace(":", "_")
+        return self.cache_dir / f"{safe_key}.json"
+    
+    def set(self, key: str, data: Any, ttl: int = 3600):
+        """Set a cache entry."""
+        file_path = self._get_file_path(key)
+        cache_data = {
+            "data": data,
+            "timestamp": time.time(),
+            "ttl": ttl
+        }
+        with open(file_path, 'w') as f:
+            json.dump(cache_data, f)
+    
+    def get(self, key: str) -> Optional[Any]:
+        """Get a cache entry."""
+        file_path = self._get_file_path(key)
+        if not file_path.exists():
+            return None
+        
+        try:
+            with open(file_path, 'r') as f:
+                cache_data = json.load(f)
+            
+            # Check if expired
+            age = time.time() - cache_data["timestamp"]
+            if age > cache_data["ttl"]:
+                file_path.unlink()  # Delete expired file
+                return None
+            
+            return cache_data["data"]
+        except Exception:
+            return None
+    
+    def delete(self, key: str):
+        """Delete a cache entry."""
+        file_path = self._get_file_path(key)
+        if file_path.exists():
+            file_path.unlink()
+    
+    def clear(self):
+        """Clear all cache entries."""
+        for file_path in self.cache_dir.glob("*.json"):
+            file_path.unlink()
+
 @dataclass
 class CacheEntry:
     """Represents a cached data entry"""

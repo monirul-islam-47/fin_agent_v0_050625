@@ -28,6 +28,10 @@ class Quote:
     volume: Optional[int] = None
     provider: Optional[str] = None
     is_delayed: bool = False
+    high: Optional[float] = None
+    low: Optional[float] = None
+    prev_close: Optional[float] = None
+    market_state: Optional[str] = None
 
 @dataclass
 class Bar:
@@ -42,6 +46,14 @@ class Bar:
     provider: Optional[str] = None
 
 @dataclass
+class SentimentScore:
+    """Sentiment analysis scores"""
+    positive: float
+    negative: float
+    neutral: float
+    compound: float
+
+@dataclass
 class Headline:
     """News headline data"""
     symbol: str
@@ -51,6 +63,16 @@ class Headline:
     url: Optional[str] = None
     sentiment: Optional[float] = None
     provider: Optional[str] = None
+
+@dataclass
+class News:
+    """News article with sentiment"""
+    symbol: str
+    headline: str
+    source: str
+    timestamp: datetime
+    url: str
+    sentiment: SentimentScore
 
 class BaseAdapter(ABC):
     """Base class for all data adapters"""

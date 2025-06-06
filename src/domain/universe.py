@@ -146,7 +146,12 @@ class UniverseManager:
                 return False
                 
             # Market cap check (if available)
-            market_cap = getattr(quote, 'market_cap', 0) if hasattr(quote, 'market_cap') else quote.get('market_cap', 0)
+            if hasattr(quote, 'market_cap'):
+                market_cap = getattr(quote, 'market_cap', 0)
+            elif hasattr(quote, 'get'):
+                market_cap = quote.get('market_cap', 0)
+            else:
+                market_cap = 0
             if market_cap > 0 and market_cap < self.min_market_cap:
                 logger.debug(f"{symbol}: Market cap ${market_cap:,.0f} below minimum")
                 return False

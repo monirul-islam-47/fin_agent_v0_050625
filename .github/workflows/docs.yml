@@ -1,0 +1,181 @@
+name: Documentation Generation
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  generate-docs:
+    name: Generate API Documentation
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for changelog
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install documentation tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install sphinx sphinx-rtd-theme sphinx-autodoc-typehints
+          pip install pdoc3 pydocstyle
+          pip install git-changelog
+          pip install -r requirements.txt
+      
+      - name: Generate API documentation with pdoc
+        run: |
+          pdoc --html --output-dir docs/api --force \
+            src.config \
+            src.data \
+            src.domain \
+            src.orchestration \
+            src.persistence \
+            src.utils
+      
+      - name: Generate Sphinx documentation
+        run: |
+          mkdir -p docs/sphinx
+          cd docs/sphinx
+          
+          # Create conf.py if it doesn't exist
+          if [ ! -f conf.py ]; then
+            sphinx-quickstart -q -p "ODTA" -a "ODTA Team" -v "1.0" --ext-autodoc --ext-viewcode --ext-napoleon
+          fi
+          
+          # Update conf.py for our project
+          cat >> conf.py << 'EOF'
+          
+# Additional configuration
+import os
+import sys
+sys.path.insert(0, os.path.abspath('../../'))
+
+extensions.extend(['sphinx.ext.autodoc', 'sphinx.ext.napoleon', 'sphinx_autodoc_typehints'])
+html_theme = 'sphinx_rtd_theme'
+autodoc_member_order = 'bysource'
+napoleon_google_docstring = True
+napoleon_numpy_docstring = True
+          EOF
+          
+          # Generate RST files
+          sphinx-apidoc -f -o source/ ../../src/
+          
+          # Build HTML docs
+          make html || sphinx-build -b html . _build/html
+      
+      - name: Generate changelog
+        run: |
+          # Generate CHANGELOG.md from git history
+          git-changelog -o CHANGELOG.md -s angular
+          
+          # Also generate a more detailed version
+          git-changelog -o docs/CHANGELOG_DETAILED.md -s angular --template detailed
+      
+      - name: Create documentation index
+        run: |
+          cat > docs/index.html << 'EOF'
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ODTA Documentation</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        h1 { color: #333; }
+        .doc-section { margin: 20px 0; padding: 20px; border: 1px solid #ddd; border-radius: 5px; }
+        a { color: #0066cc; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <h1>One-Day Trading Agent (ODTA) Documentation</h1>
+    
+    <div class="doc-section">
+        <h2>API Reference</h2>
+        <p>Comprehensive API documentation generated from docstrings.</p>
+        <ul>
+            <li><a href="api/src/index.html">pdoc API Documentation</a></li>
+            <li><a href="sphinx/_build/html/index.html">Sphinx Documentation</a></li>
+        </ul>
+    </div>
+    
+    <div class="doc-section">
+        <h2>Project Documentation</h2>
+        <ul>
+            <li><a href="research/PRD.html">Product Requirements Document</a></li>
+            <li><a href="research/agent_architecture.html">System Architecture</a></li>
+            <li><a href="research/opus_build_plan.html">Build Plan</a></li>
+            <li><a href="../CHANGELOG.md">Changelog</a></li>
+        </ul>
+    </div>
+    
+    <div class="doc-section">
+        <h2>Test Coverage</h2>
+        <p>View the latest test coverage reports.</p>
+        <ul>
+            <li><a href="../coverage/index.html">Coverage Report</a></li>
+        </ul>
+    </div>
+    
+    <div class="doc-section">
+        <h2>Quick Links</h2>
+        <ul>
+            <li><a href="https://github.com/monirul-islam-47/fin_agent_v0_050625">GitHub Repository</a></li>
+            <li><a href="https://github.com/monirul-islam-47/fin_agent_v0_050625/issues">Issue Tracker</a></li>
+        </ul>
+    </div>
+    
+    <footer>
+        <p>Generated on: <script>document.write(new Date().toLocaleString());</script></p>
+    </footer>
+</body>
+</html>
+EOF
+      
+      - name: Upload documentation artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: documentation
+          path: |
+            docs/
+            CHANGELOG.md
+      
+      - name: Deploy to GitHub Pages
+        if: github.ref == 'refs/heads/main'
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./docs
+          keep_files: true
+
+  generate-badges:
+    name: Generate README Badges
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Update README with badges
+        run: |
+          # Create badges section if it doesn't exist
+          if ! grep -q "## Badges" README.md; then
+            sed -i '1a\\n## Badges\n\n[![CI/CD Pipeline](https://github.com/monirul-islam-47/fin_agent_v0_050625/workflows/CI%2FCD%20Pipeline/badge.svg)](https://github.com/monirul-islam-47/fin_agent_v0_050625/actions)\n[![Test Coverage](https://github.com/monirul-islam-47/fin_agent_v0_050625/workflows/Test%20Coverage/badge.svg)](https://github.com/monirul-islam-47/fin_agent_v0_050625/actions)\n[![Documentation](https://github.com/monirul-islam-47/fin_agent_v0_050625/workflows/Documentation%20Generation/badge.svg)](https://github.com/monirul-islam-47/fin_agent_v0_050625/actions)\n[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)\n[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)\n' README.md
+          fi
+      
+      - name: Commit badge updates
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add README.md
+          git diff --staged --quiet || git commit -m "Update README badges [skip ci]"
+          git push || true

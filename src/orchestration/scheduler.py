@@ -317,9 +317,7 @@ class Scheduler:
         """Start WebSocket connection for real-time data."""
         try:
             if self.config.api.finnhub_key:
-                self._websocket = FinnhubWebSocket(
-                    api_key=self.config.api.finnhub_key
-                )
+                self._websocket = FinnhubWebSocket()
                 
                 # Start connection task
                 self._websocket_task = asyncio.create_task(
@@ -403,3 +401,30 @@ class Scheduler:
             }
             
         return status
+    
+    def _should_run_on_weekend(self) -> bool:
+        """Check if scans should run on weekends.
+        
+        Returns:
+            False - markets are closed on weekends
+        """
+        return False
+    
+    def _calculate_next_scan_time(self) -> datetime:
+        """Calculate the next scan time.
+        
+        Returns:
+            Next scheduled scan time
+        """
+        now = datetime.now(self.cet)
+        next_times = []
+        
+        for scan_config in self.scheduled_scans.values():
+            if scan_config.enabled and scan_config.next_run:
+                next_times.append(scan_config.next_run)
+        
+        if next_times:
+            return min(next_times)
+        
+        # Default to next day at 14:00 CET
+        return now.replace(hour=14, minute=0, second=0, microsecond=0) + timedelta(days=1)

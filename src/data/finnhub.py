@@ -81,7 +81,7 @@ class FinnhubWebSocket(MarketDataAdapter):
         for symbol in symbols:
             if symbol not in self.subscribed_symbols:
                 # Track API usage
-                if not self.quota_guard.check_and_update('finnhub', 1):
+                if not await self.quota_guard.check_quota('finnhub', 1):
                     logger.warning(f"Finnhub quota exceeded, cannot subscribe to {symbol}")
                     continue
                     

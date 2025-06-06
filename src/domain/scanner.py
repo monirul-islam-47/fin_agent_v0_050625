@@ -220,11 +220,11 @@ class GapScanner:
             logger.error(f"Error analyzing {symbol}: {e}")
             return None
             
-    def _calculate_avg_volume(self, history: List[Dict[str, Any]]) -> float:
+    def _calculate_avg_volume(self, history: List[Any]) -> float:
         """Calculate average volume from history.
         
         Args:
-            history: Price history data
+            history: Price history data (can be Bar objects or dicts)
             
         Returns:
             Average volume
@@ -232,7 +232,12 @@ class GapScanner:
         if not history:
             return 0.0
             
-        volumes = [bar.get('volume', 0) for bar in history[:-1]]  # Exclude today
+        volumes = []
+        for bar in history[:-1]:  # Exclude today
+            if hasattr(bar, 'volume'):
+                volumes.append(bar.volume)
+            else:
+                volumes.append(bar.get('volume', 0))
         return sum(volumes) / len(volumes) if volumes else 0.0
         
     async def _calculate_atr(self, symbol: str) -> Optional[float]:

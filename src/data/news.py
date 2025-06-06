@@ -63,7 +63,7 @@ class NewsAPIAdapter(NewsAdapter):
             
     async def get_headlines(self, symbol: str, limit: int = 10) -> List[Headline]:
         """Get recent headlines for symbol"""
-        if not self.quota_guard.check_and_update('newsapi', 1):
+        if not await self.quota_guard.check_quota('newsapi', 1):
             logger.warning(f"NewsAPI quota exceeded, cannot fetch headlines for {symbol}")
             return []
             
@@ -130,7 +130,7 @@ class NewsAPIAdapter(NewsAdapter):
         limit: int = 20
     ) -> List[Headline]:
         """Search news by query and date range"""
-        if not self.quota_guard.check_and_update('newsapi', 1):
+        if not await self.quota_guard.check_quota('newsapi', 1):
             logger.warning("NewsAPI quota exceeded")
             return []
             

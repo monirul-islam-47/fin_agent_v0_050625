@@ -66,6 +66,19 @@ class RiskMetrics:
 
 
 @dataclass
+class PositionSizing:
+    """Position sizing calculation result."""
+    shares: int
+    position_value_eur: float
+    max_risk_eur: float
+    risk_reward_ratio: float = 2.0
+    
+    # Additional metrics
+    risk_per_share: float = 0.0
+    account_utilization_pct: float = 0.0
+
+
+@dataclass
 class RiskDecision:
     """Risk management decision for a trade."""
     status: RiskStatus
@@ -146,41 +159,66 @@ class RiskManager:
         
     def calculate_position_size(
         self,
-        price: float,
+        entry_price: float,
         stop_loss: float,
-        max_risk_eur: Optional[float] = None
-    ) -> int:
+        account_balance: float,
+        max_risk_percent: float = 1.0,
+        max_position_percent: float = 2.5
+    ) -> PositionSizing:
         """Calculate position size based on risk parameters.
         
         Args:
-            price: Entry price
-            stop_loss: Stop loss price
-            max_risk_eur: Maximum risk in EUR (uses daily limit if None)
+            entry_price: Entry price per share
+            stop_loss: Stop loss price per share
+            account_balance: Total account balance in EUR
+            max_risk_percent: Maximum risk as percentage of account
+            max_position_percent: Maximum position as percentage of account
             
         Returns:
-            Number of shares
+            PositionSizing object with calculated parameters
         """
-        if max_risk_eur is None:
-            # Use remaining daily loss capacity
-            remaining_capacity = self.metrics.max_daily_loss_eur - abs(self.metrics.daily_loss_eur)
-            max_risk_eur = max(0, remaining_capacity)
-            
-        if max_risk_eur <= 0:
-            return 0
-            
+        # Calculate max risk in EUR
+        max_risk_eur = account_balance * (max_risk_percent / 100.0)
+        max_position_eur = account_balance * (max_position_percent / 100.0)
+        
+        # Use the more restrictive of configured limits or percentage-based limits
+        max_risk_eur = min(max_risk_eur, self.metrics.max_daily_loss_eur - abs(self.metrics.daily_loss_eur))
+        max_position_eur = min(max_position_eur, self.metrics.max_position_size_eur)
+        
         # Risk per share
-        risk_per_share = abs(price - stop_loss)
-        if risk_per_share <= 0:
-            return 0
-            
-        # Calculate shares
-        shares = int(max_risk_eur / risk_per_share)
+        risk_per_share = abs(entry_price - stop_loss)
+        if risk_per_share <= 0 or max_risk_eur <= 0:
+            return PositionSizing(
+                shares=0,
+                position_value_eur=0.0,
+                max_risk_eur=0.0,
+                risk_reward_ratio=2.0,
+                risk_per_share=0.0,
+                account_utilization_pct=0.0
+            )
         
-        # Apply position size limit
-        max_shares_by_size = int(self.metrics.max_position_size_eur / price)
-        shares = min(shares, max_shares_by_size)
+        # Calculate shares based on risk
+        shares_by_risk = int(max_risk_eur / risk_per_share)
         
-        return max(0, shares)
+        # Calculate shares based on position size limit
+        shares_by_size = int(max_position_eur / entry_price)
+        
+        # Use the more restrictive limit
+        shares = max(0, min(shares_by_risk, shares_by_size))
+        position_value = shares * entry_price
+        actual_risk = shares * risk_per_share
+        
+        # Calculate risk-reward ratio (assuming 2:1 default)
+        risk_reward_ratio = 2.0
+        
+        return PositionSizing(
+            shares=shares,
+            position_value_eur=position_value,
+            max_risk_eur=actual_risk,
+            risk_reward_ratio=risk_reward_ratio,
+            risk_per_share=risk_per_share,
+            account_utilization_pct=(position_value / account_balance * 100) if account_balance > 0 else 0
+        )
         
     def check_daily_loss_limit(self) -> bool:
         """Check if daily loss limit has been reached.
@@ -216,24 +254,26 @@ class RiskManager:
         remaining_capacity = self.metrics.max_daily_loss_eur - abs(self.metrics.daily_loss_eur)
         if plan.max_risk_eur > remaining_capacity:
             # Try to adjust position size
-            adjusted_shares = self.calculate_position_size(
-                plan.entry_price,
-                plan.stop_loss,
-                remaining_capacity
+            adjusted_sizing = self.calculate_position_size(
+                entry_price=plan.entry_price,
+                stop_loss=plan.stop_loss,
+                account_balance=self.metrics.max_total_exposure_eur,
+                max_risk_percent=(remaining_capacity / self.metrics.max_total_exposure_eur * 100),
+                max_position_percent=(self.metrics.max_position_size_eur / self.metrics.max_total_exposure_eur * 100)
             )
             
-            if adjusted_shares > 0:
+            if adjusted_sizing.shares > 0:
                 decision = RiskDecision(
                     status=RiskStatus.WARNING,
                     trade_plan=plan,
                     approved=True,
                     reason=f"Position size adjusted to fit remaining risk capacity",
                     metrics=self.metrics,
-                    adjusted_size=adjusted_shares,
-                    adjusted_risk=remaining_capacity
+                    adjusted_size=adjusted_sizing.shares,
+                    adjusted_risk=adjusted_sizing.max_risk_eur
                 )
                 decision.warnings.append(
-                    f"Reduced from {plan.position_size_shares} to {adjusted_shares} shares"
+                    f"Reduced from {plan.position_size_shares} to {adjusted_sizing.shares} shares"
                 )
                 return decision
             else:

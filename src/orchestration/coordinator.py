@@ -50,7 +50,13 @@ class Coordinator:
         event_bus: EventBus,
         cache: Optional[CacheManager] = None,
         market_data: Optional[MarketDataManager] = None,
-        news_manager: Optional[NewsManager] = None
+        news_manager: Optional[NewsManager] = None,
+        market_data_manager: Optional[MarketDataManager] = None,
+        gap_scanner: Optional[GapScanner] = None,
+        trade_planner: Optional[TradePlanner] = None,
+        risk_manager: Optional[RiskManager] = None,
+        trade_journal: Optional[TradeJournal] = None,
+        universe_manager: Optional[UniverseManager] = None
     ):
         """Initialize coordinator.
         
@@ -59,24 +65,30 @@ class Coordinator:
             cache: Optional cache manager (will create if not provided)
             market_data: Optional market data manager
             news_manager: Optional news manager
+            market_data_manager: Optional market data manager (alternate param)
+            gap_scanner: Optional gap scanner
+            trade_planner: Optional trade planner
+            risk_manager: Optional risk manager
+            trade_journal: Optional trade journal
+            universe_manager: Optional universe manager
         """
         self.event_bus = event_bus
         self.config = get_config()
         
         # Initialize components
         self.cache = cache or CacheManager()
-        self.market_data = market_data or MarketDataManager()
+        self.market_data = market_data or market_data_manager or MarketDataManager()
         self.news_manager = news_manager or NewsManager()
         
         # Domain components
-        self.universe_manager = UniverseManager(self.market_data, self.cache)
-        self.gap_scanner = GapScanner(self.cache)
+        self.universe_manager = universe_manager or UniverseManager(self.market_data, self.cache)
+        self.gap_scanner = gap_scanner or GapScanner(self.cache)
         self.factor_model = FactorModel()
-        self.trade_planner = TradePlanner()
-        self.risk_manager = RiskManager()
+        self.trade_planner = trade_planner or TradePlanner()
+        self.risk_manager = risk_manager or RiskManager()
         
         # Persistence components
-        self.trade_journal = TradeJournal()
+        self.trade_journal = trade_journal or TradeJournal()
         self.performance_metrics = PerformanceMetrics(self.trade_journal)
         
         # State
@@ -431,3 +443,81 @@ class Coordinator:
                 "risk_manager": "ready"
             }
         }
+    
+    def _is_trading_day(self, date: datetime) -> bool:
+        """Check if a date is a trading day.
+        
+        Args:
+            date: Date to check
+            
+        Returns:
+            True if trading day, False otherwise
+        """
+        # Check if weekend
+        if date.weekday() in [5, 6]:  # Saturday, Sunday
+            return False
+            
+        # Check if US market holiday
+        # Simplified holiday list - in production would use a holiday calendar
+        holidays = [
+            (1, 1),   # New Year's Day
+            (7, 4),   # Independence Day
+            (12, 25), # Christmas
+        ]
+        
+        for month, day in holidays:
+            if date.month == month and date.day == day:
+                return False
+                
+        return True
+    
+    def _can_execute_trades(self) -> bool:
+        """Check if trades can be executed now.
+        
+        Returns:
+            True if trades can be executed
+        """
+        # In tests, market_data is injected
+        if hasattr(self, 'market_data') and self.market_data:
+            return self.market_data.is_market_open()
+        return False
+    
+    def _is_market_open_at_time(self, check_time: datetime) -> bool:
+        """Check if market is open at specific time.
+        
+        Args:
+            check_time: Time to check
+            
+        Returns:
+            True if market open at that time
+        """
+        # US market hours: 9:30 AM - 4:00 PM ET
+        # Early close days: 1:00 PM ET
+        
+        # Check if trading day
+        if not self._is_trading_day(check_time):
+            return False
+            
+        # Convert to ET for US markets
+        hour = check_time.hour
+        minute = check_time.minute
+        
+        # Early close days
+        early_close_dates = [
+            (7, 3),   # Day before Independence Day
+            (12, 24), # Christmas Eve
+        ]
+        
+        for month, day in early_close_dates:
+            if check_time.month == month and check_time.day == day:
+                # Market closes at 1 PM ET
+                if hour >= 13:
+                    return False
+                    
+        # Normal hours: 9:30 AM - 4:00 PM ET
+        if hour < 9 or hour >= 16:
+            return False
+        if hour == 9 and minute < 30:
+            return False
+            
+        return True
